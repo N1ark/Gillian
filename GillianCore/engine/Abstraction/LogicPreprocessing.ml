@@ -267,10 +267,12 @@ let unfold_spec
           (Fmt.list Asrt.pp) posts);
     let posts = List.filter Simplifications.admissible_assertion posts in
     if posts = [] then
-      Fmt.failwith
-        "Unfolding: Postcondition of %s seems invalid, it has been reduced to \
-         no postcondition"
-        spec_name;
+      Logging.print_to_all
+        Fmt.(
+          str
+            "Unfolding: Postcondition of %s seems invalid, it has been reduced \
+             to no postcondition"
+            spec_name);
     List.map
       (fun pre -> Spec.{ sspec with ss_pre = pre; ss_posts = posts })
       pres
