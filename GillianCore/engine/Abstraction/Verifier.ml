@@ -316,9 +316,9 @@ struct
         List.iter
           (fun (sspec : Spec.st) ->
             if sspec.ss_posts = [] then
-              Logging.normal (fun m ->
-                  m "Specification without post-condition for function %s"
-                    spec.spec_name))
+              Logging.print_to_all
+                ("Specification without post-condition for function "
+               ^ spec.spec_name))
           spec.spec_sspecs
       in
       L.verbose (fun m ->
@@ -519,8 +519,8 @@ struct
       (rets : SAInterpreter.result_t list) : bool =
     (if rets = [] then
      L.(
-       normal (fun m ->
-           m "WARNING: Function %s evaluates to 0 results." test.name)));
+       print_to_all
+         ("WARNING: Function " ^ test.name ^ " evaluates to 0 results.")));
     let success = List.for_all (analyse_proc_result test flag) rets in
     print_success_or_failure success;
     success

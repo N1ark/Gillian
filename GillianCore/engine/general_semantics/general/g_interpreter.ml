@@ -818,11 +818,9 @@ struct
               else
                 let () =
                   if ret = [] && not spec.data.spec_incomplete then
-                    L.normal (fun m ->
-                        m
-                          "Specification of function %s is empty, proceeding \
-                           anyway."
-                          spec.data.spec_name)
+                    L.print_to_all
+                      ("Specification of function " ^ spec.data.spec_name
+                     ^ " is empty, proceeding anyway.")
                 in
 
                 let successes, errors =
