@@ -1,3 +1,4 @@
 (library
  (name javert_utils)
+ (public_name gillian-js-libs.javert_utils)
  (libraries gillian))
