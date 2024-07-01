@@ -114,6 +114,13 @@ let rec compile_expr ?(fname = "main") ?(is_loop_prefix = false) expr :
       let cmdl2, comp_expr2 = compile_expr e2 in
       let expr = Expr.NOp (LstCat, [ comp_expr1; comp_expr2 ]) in
       (cmdl1 @ cmdl2, expr)
+  | BinOp (e1, WBinOp.NEQ, e2) ->
+      let cmdl1, comp_expr1 = compile_expr e1 in
+      let cmdl2, comp_expr2 = compile_expr e2 in
+      let expr =
+        Expr.UnOp (UnOp.UNot, Expr.BinOp (comp_expr1, BinOp.Equal, comp_expr2))
+      in
+      (cmdl1 @ cmdl2, expr)
   | BinOp (e1, b, e2) when is_internal_func b ->
       (* Operator corresponds to pointer arithmetics *)
       let call_var = gen_str gvar in
