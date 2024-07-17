@@ -89,11 +89,13 @@ module Serialization = struct
 end
 
 let of_yojson json =
-  match json with
-  | `Null -> Ok empty
-  | _ ->
-      Result.map Serialization.of_definition_list
-        ([%of_yojson: Serialization.entry list] json)
+  let json =
+    match json with
+    | `Null -> `List []
+    | _ -> json
+  in
+  Result.map Serialization.of_definition_list
+    ([%of_yojson: Serialization.entry list] json)
 
 let to_yojson genv =
   let open Serialization in
