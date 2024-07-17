@@ -94,6 +94,20 @@
   dune-site
   printbox-text))
 
+
+(package
+ (name gillian-c-libs)
+ (sites
+  (share runtime)
+  (share c_includes))
+ (synopsis "Gillian instantiation for C (LIBS)")
+ (depends
+  (gillian
+   (= :version))
+  compcert
+  dune-site
+  printbox-text))
+
 (package
  (name kanillian)
  (sites

@@ -6,8 +6,8 @@
  (modules annot_lexer))
 
 (library
- (package gillian-c)
  (name cgil_lib)
+ (public_name gillian-c-libs)
  (libraries
   gillian
   gillian.alcotest-runner
@@ -21,4 +21,4 @@
 
 (generate_sites_module
  (module runtime_sites)
- (sites gillian-c))
+ (sites gillian-c-libs))
