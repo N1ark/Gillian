@@ -694,7 +694,7 @@ g_assertion_target:
     { Asrt.Emp }
 (* x(e1, ..., en) *)
   | pcall = predicate_call
-    { 
+    {
       let (name, params) = pcall in
       Asrt.Pred (name, params)
     }
@@ -736,7 +736,7 @@ g_logic_cmd_target:
 (* unfold* x(e1, ..., en) [ def with #x := le1 and ... ] *)
   | RECUNFOLD; name = proc_name; LBRACE; les=separated_list(COMMA, expr_target); RBRACE; unfold_info = option(unfold_info_target)
     { LCmd.SL (Unfold (name, les, unfold_info, true)) }
-  
+
   | PACKAGE; LBRACE; lhs = predicate_call; WAND; rhs = predicate_call; RBRACE;
     { LCmd.SL (Package { lhs; rhs })}
 
@@ -747,7 +747,7 @@ g_logic_cmd_target:
   | SYMBEXEC { LCmd.SL SymbExec }
 
 (* invariant (a) [existentials: x, y, z] *)
-  | INVARIANT; LBRACE; a = g_assertion_target; RBRACE; binders = option(binders_target)
+  | INVARIANT; LBRACE; a = g_assertion_target; RBRACE; binders = option(existentials_target)
     { LCmd.SL (Invariant (a, Option.value ~default:[ ] binders)) }
 
 (* assert_* (a) [bind: x, y, z] *)
@@ -982,7 +982,7 @@ binders_target:
 ;
 
 existentials_target:
-  | LBRACKET; EXISTENTIALS; COLON; xs = separated_list(COMMA, LVAR); RBRACKET
+  | LBRACKET; EXISTENTIALS; COLON; xs = separated_list(COMMA, lvar_or_pvar); RBRACKET
     { xs }
 ;
 
