@@ -166,11 +166,14 @@ module Make (Annot : Annot.S) = struct
       let file = resolve_path path in
       let extension = Filename.extension file in
       let prog =
-        if String.equal extension ".gil" then
+        if String.equal extension ".gil" then (
           let result = parse_eprog_from_file file in
           match result.init_data with
           | `Null -> result.labeled_prog
-          | _ -> failwith "imported file had init_data, don't know what to do"
+          | _ ->
+              Logging.verbose (fun f ->
+                  f "Imported file had init_data, ignoring it.");
+              result.labeled_prog)
         else
           match List.assoc_opt (remove_dot extension) other_imports with
           | None -> failwith (Printf.sprintf "Cannot import file \"%s\"" file)
