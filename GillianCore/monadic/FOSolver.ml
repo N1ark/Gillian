@@ -27,16 +27,7 @@ let sat ~(pc : Pc.t) formula =
   let pfs, gamma = (build_full_pfs pc, build_full_gamma pc) in
 
   Logging.tmi (fun m -> m "WITH PFS : %a" PFS.pp pfs);
-  match
-    Engine.Reduction.reduce_formula ~matching:pc.matching ~pfs ~gamma formula
-  with
-  | True ->
-      Logging.verbose (fun fmt -> fmt "Discharged sat before Z3");
-      true
-  | False ->
-      Logging.verbose (fun fmt -> fmt "Discharged sat before Z3");
-      false
-  | formula -> FOSolver.sat ~matching:pc.matching ~pfs ~gamma formula
+  FOSolver.sat ~matching:pc.matching ~pfs ~gamma formula
 
 let check_entailment ~(pc : Pc.t) formula =
   let pfs, gamma = (build_full_pfs pc, build_full_gamma pc) in
@@ -73,9 +64,13 @@ let reduce_expr ~pc expr =
   Reduction.reduce_lexpr ~matching:pc.Pc.matching ~pfs:(build_full_pfs pc)
     ~gamma:(build_full_gamma pc) expr
 
+let reduce_formula ~pc formula =
+  Reduction.reduce_formula ~matching:pc.Pc.matching ~pfs:(build_full_pfs pc)
+    ~gamma:(build_full_gamma pc) formula
+
 let resolve_type ~(pc : Pc.t) expr =
   (* TODO: I don't know what that how parameter means.
      I'm copying what Reduction does.
      Typing is not documented - ask Petar. *)
-  let t, how, _ = Typing.type_lexpr pc.gamma expr in
+  let t, how = Typing.type_lexpr pc.gamma expr in
   if how then t else None

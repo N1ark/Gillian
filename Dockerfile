@@ -6,7 +6,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN sudo apt-get update
 
-RUN sudo apt-get install libgmp-dev pkg-config libsqlite3-dev python3 -y
+RUN sudo apt-get install libgmp-dev pkg-config libsqlite3-dev python3 z3 -y
 
 RUN mkdir /home/opam/app
 
@@ -20,10 +20,12 @@ WORKDIR /home/opam/app/Gillian
 
 COPY . .
 
+RUN [ ! -f _opam ] || mv _opam ~/.opam/5.2
+
 RUN opam update -y
 
 RUN opam install . --deps-only
 
 RUN opam exec -- dune build @all
 
-CMD [ "zsh" ]
+CMD [ "bash" ]

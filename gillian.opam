@@ -8,7 +8,7 @@ license: "BSD-3-Clause"
 homepage: "https://github.com/GillianPlatform/Gillian"
 bug-reports: "https://github.com/GillianPlatform/Gillian/issues"
 depends: [
-  "dune" {>= "2.8"}
+  "dune" {>= "3.16"}
   "ocaml" {>= "5.1.0"}
   "alcotest" {= "1.0.1"}
   "cmdliner" {>= "1.1.1"}
@@ -18,11 +18,12 @@ depends: [
   "menhir" {= "20231231"}
   "ppx_deriving_yojson"
   "ppxlib" {>= "0.18.0"}
+  "sexplib"
+  "simple_smt"
   "sqlite3" {= "5.0.2"}
   "visitors" {>= "2.3"}
   "yojson" {>= "1.7.0"}
   "zarith" {>= "1.12"}
-  "z3" {= "4.13.0"}
   "odoc" {with-doc}
 ]
 build: [
@@ -34,9 +35,14 @@ build: [
     name
     "-j"
     jobs
+    "--promote-install-files=false"
     "@install"
     "@runtest" {with-test}
     "@doc" {with-doc}
   ]
+  ["dune" "install" "-p" name "--create-install-files" name]
 ]
 dev-repo: "git+https://github.com/GillianPlatform/Gillian.git"
+pin-depends: [
+  "simple_smt.~dev" "git+https://github.com/NatKarmios/simple-smt-ocaml#b88c4b0685f6ec989e8b4c911e296c4087768db8"
+]

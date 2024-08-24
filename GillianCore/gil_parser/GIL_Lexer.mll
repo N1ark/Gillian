@@ -69,6 +69,7 @@
 
         (* Expression keywords *)
         "typeOf", GIL_Parser.TYPEOF;
+        "exists", GIL_Parser.EXISTS;
 
 
         (* Command keywords *)
@@ -110,6 +111,8 @@
         "else",         GIL_Parser.LELSE;
         "macro",        GIL_Parser.MACRO;
         "invariant",    GIL_Parser.INVARIANT;
+        "consume",      GIL_Parser.CONSUME;
+        "produce",      GIL_Parser.PRODUCE;
         "assert",       GIL_Parser.ASSERT;
         "assume",       GIL_Parser.ASSUME;
         "assume_type",  GIL_Parser.ASSUME_TYPE;
@@ -130,6 +133,7 @@
         "normal",       GIL_Parser.NORMAL;
         "error",        GIL_Parser.ERROR;
         "fail",         GIL_Parser.FAIL;
+        "trusted",      GIL_Parser.TRUSTED;
 
         (* Procedure definition keywords *)
         "proc", GIL_Parser.PROC;

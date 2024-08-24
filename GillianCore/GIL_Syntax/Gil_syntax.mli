@@ -196,6 +196,7 @@ module BinOp : sig
     | SLessThan  (** Less or equal for strings *)
     | BAnd  (** Boolean conjunction *)
     | BOr  (** Boolean disjunction *)
+    | BImpl  (** Boolean implication *)
     | BitwiseAnd  (** Bitwise conjunction *)
     | BitwiseOr  (** Bitwise disjunction *)
     | BitwiseXor  (** Bitwise exclusive disjunction *)
@@ -258,6 +259,9 @@ module Expr : sig
     | NOp of NOp.t * t list  (** n-ary operators ({!type:NOp.t}) *)
     | EList of t list  (** Lists of expressions *)
     | ESet of t list  (** Sets of expressions *)
+    | Exists of (string * Type.t option) list * t
+        (** Existential quantification. This is now a circus because the separation between Formula and Expr doesn't make sense anymore. *)
+    | EForall of (string * Type.t option) list * t
   [@@deriving yojson]
 
   (** {2: Helpers for building expressions}
@@ -403,9 +407,6 @@ module Expr : sig
 
   (** [is_matchable x] returns whether or not the expression [e] is matchable *)
   val is_matchable : t -> bool
-
-  (** Sub-expression check *)
-  val sub_expr : t -> t -> bool
 end
 
 (** @canonical Gillian.Gil_syntax.Formula *)
@@ -670,6 +671,8 @@ module SLCmd : sig
     | ApplyLem of string * Expr.t list * string list  (** Apply lemma *)
     | SepAssert of Asrt.t * string list  (** Assert *)
     | Invariant of Asrt.t * string list  (** Invariant *)
+    | Consume of Asrt.t * string list
+    | Produce of Asrt.t
     | SymbExec
 
   (** @deprecated Use {!Visitors.endo} instead *)
@@ -1275,6 +1278,7 @@ module Visitors : sig
          ; visit_AssumeType : 'c -> LCmd.t -> Expr.t -> Type.t -> LCmd.t
          ; visit_BAnd : 'c -> BinOp.t -> BinOp.t
          ; visit_BOr : 'c -> BinOp.t -> BinOp.t
+         ; visit_BImpl : 'c -> BinOp.t -> BinOp.t
          ; visit_BSetMem : 'c -> BinOp.t -> BinOp.t
          ; visit_BSetSub : 'c -> BinOp.t -> BinOp.t
          ; visit_BinOp : 'c -> Expr.t -> Expr.t -> BinOp.t -> Expr.t -> Expr.t
@@ -1314,6 +1318,10 @@ module Visitors : sig
              'f Cmd.t
          ; visit_EList : 'c -> Expr.t -> Expr.t list -> Expr.t
          ; visit_ESet : 'c -> Expr.t -> Expr.t list -> Expr.t
+         ; visit_Exists :
+             'c -> Expr.t -> (string * Type.t option) list -> Expr.t -> Expr.t
+         ; visit_EForall :
+             'c -> Expr.t -> (string * Type.t option) list -> Expr.t -> Expr.t
          ; visit_Emp : 'c -> Asrt.t -> Asrt.t
          ; visit_Empty : 'c -> Literal.t -> Literal.t
          ; visit_EmptyType : 'c -> Type.t -> Type.t
@@ -1368,6 +1376,8 @@ module Visitors : sig
          ; visit_Int : 'c -> Literal.t -> Z.t -> Literal.t
          ; visit_IntType : 'c -> Type.t -> Type.t
          ; visit_Invariant : 'c -> SLCmd.t -> Asrt.t -> string list -> SLCmd.t
+         ; visit_Consume : 'c -> SLCmd.t -> Asrt.t -> string list -> SLCmd.t
+         ; visit_Produce : 'c -> SLCmd.t -> Asrt.t -> SLCmd.t
          ; visit_LAction :
              'c -> 'f Cmd.t -> string -> string -> Expr.t list -> 'f Cmd.t
          ; visit_LList : 'c -> Literal.t -> Literal.t list -> Literal.t
@@ -1536,6 +1546,7 @@ module Visitors : sig
     method visit_AssumeType : 'c -> LCmd.t -> Expr.t -> Type.t -> LCmd.t
     method visit_BAnd : 'c -> BinOp.t -> BinOp.t
     method visit_BOr : 'c -> BinOp.t -> BinOp.t
+    method visit_BImpl : 'c -> BinOp.t -> BinOp.t
     method visit_BSetMem : 'c -> BinOp.t -> BinOp.t
     method visit_BSetSub : 'c -> BinOp.t -> BinOp.t
     method visit_BinOp : 'c -> Expr.t -> Expr.t -> BinOp.t -> Expr.t -> Expr.t
@@ -1573,6 +1584,13 @@ module Visitors : sig
 
     method visit_EList : 'c -> Expr.t -> Expr.t list -> Expr.t
     method visit_ESet : 'c -> Expr.t -> Expr.t list -> Expr.t
+
+    method visit_Exists :
+      'c -> Expr.t -> (string * Type.t option) list -> Expr.t -> Expr.t
+
+    method visit_EForall :
+      'c -> Expr.t -> (string * Type.t option) list -> Expr.t -> Expr.t
+
     method visit_Emp : 'c -> Asrt.t -> Asrt.t
     method visit_Empty : 'c -> Literal.t -> Literal.t
     method visit_EmptyType : 'c -> Type.t -> Type.t
@@ -1626,6 +1644,8 @@ module Visitors : sig
     method visit_Int : 'c -> Literal.t -> Z.t -> Literal.t
     method visit_IntType : 'c -> Type.t -> Type.t
     method visit_Invariant : 'c -> SLCmd.t -> Asrt.t -> string list -> SLCmd.t
+    method visit_Consume : 'c -> SLCmd.t -> Asrt.t -> string list -> SLCmd.t
+    method visit_Produce : 'c -> SLCmd.t -> Asrt.t -> SLCmd.t
 
     method visit_LAction :
       'c -> 'f Cmd.t -> string -> string -> Expr.t list -> 'f Cmd.t
@@ -1832,6 +1852,7 @@ module Visitors : sig
          ; visit_AssumeType : 'c -> Expr.t -> Type.t -> 'f
          ; visit_BAnd : 'c -> 'f
          ; visit_BOr : 'c -> 'f
+         ; visit_BImpl : 'c -> 'f
          ; visit_BSetMem : 'c -> 'f
          ; visit_BSetSub : 'c -> 'f
          ; visit_BinOp : 'c -> Expr.t -> BinOp.t -> Expr.t -> 'f
@@ -1866,6 +1887,8 @@ module Visitors : sig
              'c -> string -> Expr.t -> Expr.t list -> 'g option -> 'f
          ; visit_EList : 'c -> Expr.t list -> 'f
          ; visit_ESet : 'c -> Expr.t list -> 'f
+         ; visit_Exists : 'c -> (string * Type.t option) list -> Expr.t -> 'f
+         ; visit_EForall : 'c -> (string * Type.t option) list -> Expr.t -> 'f
          ; visit_Emp : 'c -> 'f
          ; visit_Empty : 'c -> 'f
          ; visit_EmptyType : 'c -> 'f
@@ -1889,6 +1912,8 @@ module Visitors : sig
          ; visit_GuardedGoto : 'c -> Expr.t -> 'g -> 'g -> 'f
          ; visit_If : 'c -> Expr.t -> LCmd.t list -> LCmd.t list -> 'f
          ; visit_Invariant : 'c -> Asrt.t -> string list -> 'f
+         ; visit_Consume : 'c -> Asrt.t -> string list -> 'f
+         ; visit_Produce : 'c -> Asrt.t -> 'f
          ; visit_LAction : 'c -> string -> string -> Expr.t list -> 'f
          ; visit_LList : 'c -> Literal.t list -> 'f
          ; visit_LVar : 'c -> LVar.t -> 'f
@@ -2059,6 +2084,7 @@ module Visitors : sig
     method visit_AssumeType : 'c -> Expr.t -> Type.t -> 'f
     method visit_BAnd : 'c -> 'f
     method visit_BOr : 'c -> 'f
+    method visit_BImpl : 'c -> 'f
     method visit_BSetMem : 'c -> 'f
     method visit_BSetSub : 'c -> 'f
     method visit_BinOp : 'c -> Expr.t -> BinOp.t -> Expr.t -> 'f
@@ -2097,6 +2123,8 @@ module Visitors : sig
 
     method visit_EList : 'c -> Expr.t list -> 'f
     method visit_ESet : 'c -> Expr.t list -> 'f
+    method visit_Exists : 'c -> (string * Type.t option) list -> Expr.t -> 'f
+    method visit_EForall : 'c -> (string * Type.t option) list -> Expr.t -> 'f
     method visit_Emp : 'c -> 'f
     method visit_Empty : 'c -> 'f
     method visit_EmptyType : 'c -> 'f
@@ -2122,6 +2150,8 @@ module Visitors : sig
     method visit_GuardedGoto : 'c -> Expr.t -> 'g -> 'g -> 'f
     method visit_If : 'c -> Expr.t -> LCmd.t list -> LCmd.t list -> 'f
     method visit_Invariant : 'c -> Asrt.t -> string list -> 'f
+    method visit_Consume : 'c -> Asrt.t -> string list -> 'f
+    method visit_Produce : 'c -> Asrt.t -> 'f
     method visit_LAction : 'c -> string -> string -> Expr.t list -> 'f
     method visit_LList : 'c -> Literal.t list -> 'f
     method visit_LVar : 'c -> LVar.t -> 'f
@@ -2292,6 +2322,7 @@ module Visitors : sig
          ; visit_AssumeType : 'c -> Expr.t -> Type.t -> unit
          ; visit_BAnd : 'c -> unit
          ; visit_BOr : 'c -> unit
+         ; visit_BImpl : 'c -> unit
          ; visit_BSetMem : 'c -> unit
          ; visit_BSetSub : 'c -> unit
          ; visit_BinOp : 'c -> Expr.t -> BinOp.t -> Expr.t -> unit
@@ -2324,6 +2355,8 @@ module Visitors : sig
              'c -> string -> Expr.t -> Expr.t list -> 'f option -> unit
          ; visit_EList : 'c -> Expr.t list -> unit
          ; visit_ESet : 'c -> Expr.t list -> unit
+         ; visit_Exists : 'c -> (string * Type.t option) list -> Expr.t -> unit
+         ; visit_EForall : 'c -> (string * Type.t option) list -> Expr.t -> unit
          ; visit_Emp : 'c -> unit
          ; visit_Empty : 'c -> unit
          ; visit_EmptyType : 'c -> unit
@@ -2367,6 +2400,8 @@ module Visitors : sig
          ; visit_Int : 'c -> Z.t -> unit
          ; visit_IntType : 'c -> unit
          ; visit_Invariant : 'c -> Asrt.t -> string list -> unit
+         ; visit_Consume : 'c -> Asrt.t -> string list -> unit
+         ; visit_Produce : 'c -> Asrt.t -> unit
          ; visit_LAction : 'c -> string -> string -> Expr.t list -> unit
          ; visit_LList : 'c -> Literal.t list -> unit
          ; visit_LVar : 'c -> string -> unit
@@ -2520,6 +2555,7 @@ module Visitors : sig
     method visit_AssumeType : 'c -> Expr.t -> Type.t -> unit
     method visit_BAnd : 'c -> unit
     method visit_BOr : 'c -> unit
+    method visit_BImpl : 'c -> unit
     method visit_BSetMem : 'c -> unit
     method visit_BSetSub : 'c -> unit
     method visit_BinOp : 'c -> Expr.t -> BinOp.t -> Expr.t -> unit
@@ -2556,6 +2592,8 @@ module Visitors : sig
 
     method visit_EList : 'c -> Expr.t list -> unit
     method visit_ESet : 'c -> Expr.t list -> unit
+    method visit_Exists : 'c -> (string * Type.t option) list -> Expr.t -> unit
+    method visit_EForall : 'c -> (string * Type.t option) list -> Expr.t -> unit
     method visit_Emp : 'c -> unit
     method visit_Empty : 'c -> unit
     method visit_EmptyType : 'c -> unit
@@ -2604,6 +2642,8 @@ module Visitors : sig
     method visit_Int : 'c -> Z.t -> unit
     method visit_IntType : 'c -> unit
     method visit_Invariant : 'c -> Asrt.t -> string list -> unit
+    method visit_Consume : 'c -> Asrt.t -> string list -> unit
+    method visit_Produce : 'c -> Asrt.t -> unit
     method visit_LAction : 'c -> string -> string -> Expr.t list -> unit
     method visit_LList : 'c -> Literal.t list -> unit
     method visit_LVar : 'c -> string -> unit

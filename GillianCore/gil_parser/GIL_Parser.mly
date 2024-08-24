@@ -123,10 +123,14 @@ let normalised_lvar_r = Str.regexp "##NORMALISED_LVAR"
 %token NUMTOINT
 (* Expression keywords *)
 %token TYPEOF
+%token EXISTS
+(* Logic command keywords *)
 %token ASSUME
 %token ASSERT
 %token SEPASSERT
 %token INVARIANT
+%token CONSUME 
+%token PRODUCE
 %token ASSUME_TYPE
 %token LSTNTH
 %token LSTREPEAT
@@ -202,6 +206,7 @@ let normalised_lvar_r = Str.regexp "##NORMALISED_LVAR"
 %token NORMAL
 %token ERROR
 %token FAIL
+%token TRUSTED
 (* Procedure definition keywords *)
 %token PROC
 (* Others *)
@@ -428,6 +433,10 @@ expr_target:
 (* Ignore variable *)
   | UNDERSCORE
     { Expr.LVar (LVar.alloc ()) }
+  | EXISTS; vars = separated_nonempty_list(COMMA, lvar_type_target); DOT; e = expr_target
+    { Expr.Exists (vars, e) }
+  | LFORALL; vars = separated_nonempty_list(COMMA, lvar_type_target); DOT; e = expr_target
+    { Expr.EForall (vars, e) }
 ;
 
 top_level_expr_target:
@@ -660,14 +669,21 @@ g_mult_spec_line:
     { let asrts' : Asrt.t list = asrts in asrts'  }
 ;
 
+g_spec_kind:
+  | NORMAL { Flag.Normal }
+  | ERROR { Flag.Error }
+
 g_sspec_target:
-(* [spec_name: #bla, #ble, #bli] [[ .... ]] [[ .... ]] Normal *)
-  | option(lab_spec_target) g_spec_line g_mult_spec_line option(variant_target) NORMAL
-    { Spec.{ ss_pre = $2; ss_posts = $3; ss_variant = $4; ss_flag = Normal; ss_to_verify = true; ss_label = $1 } }
-(* [[ .... ]] [[ .... ]] Error *)
-  | lab_spec = option(lab_spec_target); ss_pre = g_spec_line; ss_posts = g_mult_spec_line; ss_variant = option(variant_target); ERROR
+(* {trusted} [spec_name: #bla, #ble, #bli] [[ .... ]] [[ .... ]] flag *)
+  trusted = option(TRUSTED);
+  lab_spec = option(lab_spec_target);
+  ss_pre = g_spec_line;
+  ss_posts = g_mult_spec_line;
+  ss_variant = option(variant_target);
+  ss_flag = g_spec_kind
   {
-    let spec : Spec.st = { ss_pre; ss_posts; ss_variant; ss_flag = Error; ss_to_verify = true; ss_label = lab_spec} in
+    let ss_to_verify = Option.is_none trusted in
+    let spec : Spec.st = { ss_pre; ss_posts; ss_variant; ss_flag; ss_to_verify; ss_label = lab_spec} in
     spec
   }
 ;
@@ -749,6 +765,12 @@ g_logic_cmd_target:
 (* invariant (a) [existentials: x, y, z] *)
   | INVARIANT; LBRACE; a = g_assertion_target; RBRACE; binders = option(existentials_target)
     { LCmd.SL (Invariant (a, Option.value ~default:[ ] binders)) }
+  
+  | CONSUME; LBRACE; a = g_assertion_target; RBRACE; binders = option(binders_target)
+    { LCmd.SL (Consume (a, Option.value ~default:[ ] binders)) }
+    
+  | PRODUCE; LBRACE; a = g_assertion_target; RBRACE;
+    { LCmd.SL (Produce a) }
 
 (* assert_* (a) [bind: x, y, z] *)
   | SEPASSERT; LBRACE; a = g_assertion_target; RBRACE; binders = option(binders_target)
@@ -1118,6 +1140,7 @@ binop_target:
   | SLT                 { BinOp.SLessThan }
   | AND                 { BinOp.BAnd }
   | OR                  { BinOp.BOr }
+  | LIMPLIES            { BinOp.BImpl }
   | BITWISEAND          { BinOp.BitwiseAnd }
   | BITWISEOR           { BinOp.BitwiseOr}
   | BITWISEXOR          { BinOp.BitwiseXor }

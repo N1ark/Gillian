@@ -268,6 +268,7 @@ let rec evaluate_binop
   let ee = evaluate_expr store in
   let lit1 = ee e1 in
   match op with
+  | BImpl -> ee (BinOp (UnOp (UNot, Expr.Lit lit1), BOr, e2))
   | BAnd -> (
       match lit1 with
       | Bool false -> Bool false
@@ -306,7 +307,7 @@ let rec evaluate_binop
       match op with
       | SetDiff | BSetMem | BSetSub ->
           raise (Exceptions.Unsupported "eval_binop concrete: set operator")
-      | BOr | BAnd ->
+      | BOr | BAnd | BImpl ->
           raise (Exceptions.Impossible "eval_binop concrete: by construction")
       | Equal -> (
           match (lit1, lit2) with
@@ -552,8 +553,9 @@ and evaluate_expr (store : CStore.t) (e : Expr.t) : CVal.M.t =
     | NOp (nop, le) -> evaluate_nop nop (List.map ee le)
     | EList ll -> evaluate_elist store ll
     | LstSub (e1, e2, e3) -> evaluate_lstsub store e1 e2 e3
-    | ALoc _ | LVar _ | ESet _ ->
-        raise (Exceptions.Impossible "eval_expr concrete: aloc, lvar, or set")
+    | ALoc _ | LVar _ | ESet _ | Exists _ | EForall _ ->
+        raise
+          (Exceptions.Impossible "eval_expr concrete: aloc, lvar, set or exists")
   with
   | TypeError msg -> raise (TypeError msg)
   | EvaluationError msg -> raise (EvaluationError msg)

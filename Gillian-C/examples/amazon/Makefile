@@ -1,7 +1,7 @@
 ifdef GITHUB_ACTIONS
-	VERIFY=gillian-c verify
+	VERIFY=opam exec -- gillian-c verify
 else
-	VERIFY=opam exec -- dune exec -- gillian-c verify
+	VERIFY=dune exec -- gillian-c verify
 endif
 
 default:
@@ -42,8 +42,15 @@ byte-cursor-ub:
 		bugs/byte_buf.c allocator.c \
 		error.c base.c \
 		--fstruct-passing --no-lemma-proof --proc aws_byte_cursor_advance -l disabled
-		
+
 bugs: string-bug header-bug byte-cursor-ub
 
 clean:
 	rm -rf *.i *.deps
+
+t:
+	${VERIFY} \
+		header.c edk.c array_list.c ec.c byte_buf.c \
+		hash_table.c string.c allocator.c \
+		error.c base.c \
+		--fstruct-passing --no-lemma-proof --proc aws_cryptosdk_hdr_parse -l disabled --dump-smt

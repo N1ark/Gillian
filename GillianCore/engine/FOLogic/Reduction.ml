@@ -14,14 +14,13 @@ let normalise_cat (f : Expr.t -> Expr.t) (les : Expr.t list) : Expr.t =
       fmt "inside normalise cat: %a" Expr.pp (NOp (LstCat, les))); *)
   (* Recursively process each catted list and destroy inner LstCats *)
   let nles =
-    List.concat
-      (List.map
-         (fun x ->
-           let fx = f x in
-           match fx with
-           | NOp (LstCat, les) -> les
-           | _ -> [ fx ])
-         les)
+    List.concat_map
+      (fun x ->
+        let fx = f x in
+        match fx with
+        | NOp (LstCat, les) -> les
+        | _ -> [ fx ])
+      les
   in
   (* L.verbose (fun fmt -> fmt "nles, v1: %a" Expr.pp (NOp (LstCat, nles))); *)
   (* Bring lists of literals together, part 1 *)
@@ -85,6 +84,8 @@ let rec normalise_list_expressions (le : Expr.t) : Expr.t =
             | Right sz ->
                 (* The element isn't in the first list, so we cut that part, and we got the size *)
                 BinOp (NOp (LstCat, tl), LstNth, Expr.int (n - sz)))
+        | NOp (LstCat, LstSub (_lst, _start, len) :: tl), idx
+          when Expr.equal len idx -> Expr.list_nth (NOp (LstCat, tl)) 0
         | _, Lit (Num _) -> raise (exn "LstNth with float")
         | le, n -> BinOp (le, LstNth, n))
     | BinOp (le1, op, le2) -> BinOp (f le1, op, f le2)
@@ -134,6 +135,8 @@ let rec normalise_list_expressions (le : Expr.t) : Expr.t =
     | EList lst -> EList (List.map f lst)
     | ESet lst -> ESet (List.map f lst)
     | LstSub (le1, le2, le3) -> LstSub (f le1, f le2, f le3)
+    | Exists (bt, le) -> Exists (bt, f le)
+    | EForall (bt, le) -> EForall (bt, f le)
     (*
     | LstSub(le1, le2, le3) ->
       (match f le1, f le2, f le3 with
@@ -218,7 +221,7 @@ let find_equalities (pfs : PFS.t) (le : Expr.t) : Expr.t list =
 (***************************)
 
 let typable (gamma : Type_env.t) (le : Expr.t) (target_type : Type.t) : bool =
-  let t, success, _ = Typing.type_lexpr gamma le in
+  let t, success = Typing.type_lexpr gamma le in
   if success then
     Option.fold ~some:(fun t -> Type.equal t target_type) ~none:true t
   else
@@ -333,11 +336,11 @@ let rec get_nth_of_list (pfs : PFS.t) (lst : Expr.t) (idx : int) : Expr.t option
       | _ -> None)
   | LstSub _ -> None
   | NOp (LstCat, lel :: ler) ->
-      Option.bind (get_length_of_list lel) (fun llen ->
-          let lst, idx =
-            if idx < llen then (lel, idx) else (NOp (LstCat, ler), idx - llen)
-          in
-          f lst idx)
+      Option.bind (get_length_of_list lel) @@ fun llen ->
+      let lst, idx =
+        if idx < llen then (lel, idx) else (NOp (LstCat, ler), idx - llen)
+      in
+      f lst idx
   | Expr.BinOp (x, LstRepeat, _) -> Some x
   | _ -> None
 
@@ -920,6 +923,23 @@ and reduce_lexpr_loop
     | BinOp (x, FTimes, BinOp (y, FDiv, z)) when x = z -> f y
     | BinOp (BinOp (x, FDiv, y), FTimes, z) when y = z -> f x
     | BinOp (Lit (LList ll), Equal, Lit (LList lr)) -> Lit (Bool (ll = lr))
+    | BinOp (left, BImpl, right) -> (
+        let left = f left in
+        match Formula.lift_logic_expr left with
+        | None -> BinOp (left, BImpl, f right)
+        | Some (True, _) -> f right
+        | Some (False, _) -> Lit (Bool true)
+        | Some (left_f, _) ->
+            let pfs_with_left =
+              let copy = PFS.copy pfs in
+              let () = PFS.extend copy left_f in
+              copy
+            in
+            let right =
+              reduce_lexpr_loop ~matching ~reduce_lvars pfs_with_left gamma
+                right
+            in
+            BinOp (left, BImpl, right))
     | BinOp (EList le, Equal, Lit (LList ll))
     | BinOp (Lit (LList ll), Equal, EList le) ->
         if List.length ll <> List.length le then Lit (Bool false)
@@ -987,7 +1007,7 @@ and reduce_lexpr_loop
         match fle with
         | Lit (Num _) -> fle
         | fle -> (
-            let tfle, how, _ = Typing.type_lexpr gamma fle in
+            let tfle, how = Typing.type_lexpr gamma fle in
             match (how, tfle) with
             | true, Some NumberType -> fle
             | _, _ -> UnOp (ToNumberOp, UnOp (ToStringOp, fle))))
@@ -1218,7 +1238,7 @@ and reduce_lexpr_loop
                 | _ -> def)
             (* The TypeOf operator *)
             | TypeOf -> (
-                let tfle, how, _ = Typing.type_lexpr gamma fle in
+                let tfle, how = Typing.type_lexpr gamma fle in
                 match how with
                 | false ->
                     let err_msg = "LTypeOf(le): expression is not typable." in
@@ -1395,14 +1415,17 @@ and reduce_lexpr_loop
            let eqs = get_equal_expressions pfs l in
            List.exists
              (function
-               | Expr.NOp (LstCat, EList les :: _) ->
+               | Expr.NOp (LstCat, EList les :: r) ->
                    Int.equal (List.compare_length_with les (Z.to_int n)) 0
+                   && not (List.length r == 1 && Expr.equal (List.hd r) le)
                (* return (List.length les == n), but efficiently *)
-               | NOp (LstCat, Lit (LList les) :: _) ->
+               | NOp (LstCat, Lit (LList les) :: r) ->
                    (* return (List.length les == n), but efficiently *)
                    Int.equal (List.compare_length_with les (Z.to_int n)) 0
+                   && not (List.length r == 1 && Expr.equal (List.hd r) le)
                | _ -> false)
              eqs ->
+        Logging.tmi (fun m -> m "REDUCTION: Case l-sub(l, n, (l-len l) - n)");
         let eqs = get_equal_expressions pfs l in
         let cat =
           List.filter_map
@@ -1446,26 +1469,38 @@ and reduce_lexpr_loop
           when Z.equal z Z.zero
                &&
                let eqs = get_equal_expressions pfs flx in
-               List.exists
-                 (function
-                   (* Length of the list is greater than n, but efficiently computed *)
-                   | Expr.EList les ->
-                       List.compare_length_with les (Z.to_int n) >= 0
-                   | Lit (LList les) ->
-                       List.compare_length_with les (Z.to_int n) >= 0
-                   | NOp (LstCat, EList les :: _) ->
-                       List.compare_length_with les (Z.to_int n) >= 0
-                   | NOp (LstCat, Lit (LList les) :: _) ->
-                       List.compare_length_with les (Z.to_int n) >= 0
-                   | _ -> false)
-                 eqs ->
+               let first =
+                 List.find_map
+                   (fun e ->
+                     match e with
+                     | Expr.EList les
+                       when List.compare_length_with les (Z.to_int n) >= 0 ->
+                         Some e
+                     | Lit (LList les)
+                       when List.compare_length_with les (Z.to_int n) >= 0 ->
+                         Some e
+                     | NOp (LstCat, (EList les as e) :: _)
+                       when List.compare_length_with les (Z.to_int n) >= 0 ->
+                         Some e
+                     | NOp (LstCat, (Lit (LList les) as e) :: _)
+                       when List.compare_length_with les (Z.to_int n) >= 0 ->
+                         Some e
+                     | _ -> None)
+                   eqs
+               in
+               match first with
+               | None -> false
+               | Some first ->
+                   let res =
+                     Expr.list_sub ~lst:first ~start:(Expr.int 0)
+                       ~size:(Expr.int_z n)
+                   in
+                   not (Expr.equal res le) ->
             L.tmi (fun fmt -> fmt "Case 5");
             let eqs = get_equal_expressions pfs flx in
             let first =
               List.find_map
                 (fun e ->
-                  (* Returns a list of which the length is greater than n, but
-                     computation is made slightly more efficient *)
                   match e with
                   | Expr.EList les
                     when List.compare_length_with les (Z.to_int n) >= 0 ->
@@ -1482,9 +1517,13 @@ and reduce_lexpr_loop
                   | _ -> None)
                 eqs
             in
-            f
-              (Expr.list_sub ~lst:(Option.get first) ~start:(Expr.int 0)
-                 ~size:(Expr.int_z n))
+            let res =
+              Expr.list_sub ~lst:(Option.get first) ~start:(Expr.int 0)
+                ~size:(Expr.int_z n)
+            in
+            Logging.tmi (fun m ->
+                m "Case 5:\nRes: %a\nOriginal: %a" Expr.pp res Expr.pp le);
+            f res
         | le, Lit (Int z), Lit (Int n)
           when Z.equal z Z.zero
                && (match le with
@@ -1677,8 +1716,25 @@ and reduce_lexpr_loop
             LstSub (fle1, fle2, fle3))
     (* CHECK: FTimes and Div are the same, how does the 'when' scope? *)
     | BinOp (lel, op, ler) -> (
-        let flel = f lel in
-        let fler = f ler in
+        let op_is_or_and () =
+          match op with
+          | BOr | BAnd -> true
+          | _ -> false
+        in
+        let flel, fler =
+          (* If we're reducing A || B or A && B and either side have a reduction exception, it must be false *)
+          let flel =
+            try f lel with
+            | ReductionException _ when op_is_or_and () -> Expr.bool false
+            | exn -> raise exn
+          in
+          let fler =
+            try f ler with
+            | ReductionException _ when op_is_or_and () -> Expr.bool false
+            | exn -> raise exn
+          in
+          (flel, fler)
+        in
         let def = Expr.BinOp (flel, op, fler) in
         match (flel, fler) with
         | Lit ll, Lit lr -> (
@@ -1713,8 +1769,8 @@ and reduce_lexpr_loop
                       || PFS.mem pfs (Not (Eq (fler, flel)))
                     then Lit (Bool false)
                     else
-                      let t1, _, _ = Typing.type_lexpr gamma flel in
-                      let t2, _, _ = Typing.type_lexpr gamma fler in
+                      let t1, _ = Typing.type_lexpr gamma flel in
+                      let t2, _ = Typing.type_lexpr gamma fler in
                       match (t1, t2) with
                       | Some t1, Some t2 ->
                           if Type.equal t1 t2 then def else Lit (Bool false)
@@ -1962,6 +2018,80 @@ and reduce_lexpr_loop
                       | Some x -> Lit (Bool x)
                       | None -> def)
                 | _ -> def)))
+    | Exists (bt, e) -> (
+        (* We create a new pfs and gamma where:
+           - All shadowed variables are substituted with a fresh variable
+           - The gamma has been updated with the types given in the binder *)
+        let new_gamma = Type_env.copy gamma in
+        let new_pfs = PFS.copy pfs in
+        let subst_bindings = List.map (fun (x, _) -> (x, LVar.alloc ())) bt in
+        let subst =
+          SVal.SESubst.init
+            (List.map (fun (x, y) -> (Expr.LVar x, Expr.LVar y)) subst_bindings)
+        in
+        let () =
+          List.iter
+            (fun (x, t) ->
+              let () =
+                match Type_env.get new_gamma x with
+                | Some t ->
+                    let new_var = List.assoc x subst_bindings in
+                    Type_env.update new_gamma new_var t
+                | None -> ()
+              in
+              match t with
+              | Some t -> Type_env.update new_gamma x t
+              | None -> Type_env.remove new_gamma x)
+            bt
+        in
+        let () = PFS.substitution subst new_pfs in
+        (* We reduce using our new pfs and gamma *)
+        let re =
+          reduce_lexpr_loop ~matching ~reduce_lvars new_pfs new_gamma e
+        in
+        let vars = Expr.lvars re in
+        let bt = List.filter (fun (b, _) -> Containers.SS.mem b vars) bt in
+        (* We remove all quantifiers that aren't used anymore *)
+        match bt with
+        | [] -> re
+        | _ -> Exists (bt, re))
+    | EForall (bt, e) -> (
+        (* We create a new pfs and gamma where:
+           - All shadowed variables are substituted with a fresh variable
+           - The gamma has been updated with the types given in the binder *)
+        let new_gamma = Type_env.copy gamma in
+        let new_pfs = PFS.copy pfs in
+        let subst_bindings = List.map (fun (x, _) -> (x, LVar.alloc ())) bt in
+        let subst =
+          SVal.SESubst.init
+            (List.map (fun (x, y) -> (Expr.LVar x, Expr.LVar y)) subst_bindings)
+        in
+        let () =
+          List.iter
+            (fun (x, t) ->
+              let () =
+                match Type_env.get new_gamma x with
+                | Some t ->
+                    let new_var = List.assoc x subst_bindings in
+                    Type_env.update new_gamma new_var t
+                | None -> ()
+              in
+              match t with
+              | Some t -> Type_env.update new_gamma x t
+              | None -> Type_env.remove new_gamma x)
+            bt
+        in
+        let () = PFS.substitution subst new_pfs in
+        (* We reduce using our new pfs and gamma *)
+        let re =
+          reduce_lexpr_loop ~matching ~reduce_lvars new_pfs new_gamma e
+        in
+        let vars = Expr.lvars re in
+        let bt = List.filter (fun (b, _) -> Containers.SS.mem b vars) bt in
+        (* We remove all quantifiers that aren't used anymore *)
+        match bt with
+        | [] -> re
+        | _ -> EForall (bt, re))
     (* The remaining cases cannot be reduced *)
     | _ -> le
   in
@@ -2362,7 +2492,19 @@ let rec reduce_formula_loop
     (gamma : Type_env.t)
     ?(previous = Formula.True)
     (a : Formula.t) : Formula.t =
-  if Formula.equal a previous then a
+  Logging.tmi (fun m ->
+      m "Reduce formula: %a -> %a"
+        (fun ft f ->
+          match f with
+          | Formula.True ->
+              Fmt.pf ft "STARTING TO REDUCE: matching %b, rpfs %b" matching rpfs
+          | _ -> Formula.pp ft f)
+        previous Formula.pp a);
+  if Formula.equal a previous then
+    let () =
+      Logging.tmi (fun m -> m "Finished reducing, obtained: %a" Formula.pp a)
+    in
+    a
   else
     let f = reduce_formula_loop ~rpfs matching pfs gamma in
     let fe = reduce_lexpr_loop ~matching pfs gamma in
@@ -2444,6 +2586,25 @@ let rec reduce_formula_loop
                 (List.hd eqs) (List.tl eqs)
             in
             conj
+      | Eq (left_list, right_list)
+        when (match
+                ( Typing.type_lexpr gamma left_list,
+                  Typing.type_lexpr gamma right_list )
+              with
+             | (Some Type.ListType, _), (Some Type.ListType, _) -> true
+             | _ -> false)
+             &&
+             match
+               fe
+                 (Expr.Infix.( - )
+                    (Expr.list_length left_list)
+                    (Expr.list_length right_list))
+             with
+             | Expr.Lit (Int k) when not (Z.equal k Z.zero) -> true
+             | _ -> false ->
+          (* If we have two lists but can reduce the equality of their lengths to false,
+             then we know the lists cannot be equal*)
+          False
       | Eq (NOp (LstCat, les), LVar x)
         when List.mem (Expr.LVar x) les
              && List.exists
@@ -2493,8 +2654,8 @@ let rec reduce_formula_loop
           let eq = re1 = re2 in
           if eq then True
           else
-            let t1, s1, _ = Typing.type_lexpr gamma re1 in
-            let t2, s2, _ = Typing.type_lexpr gamma re2 in
+            let t1, s1 = Typing.type_lexpr gamma re1 in
+            let t2, s2 = Typing.type_lexpr gamma re2 in
             if
               s1 && s2
               &&
@@ -2787,7 +2948,7 @@ let rec reduce_formula_loop
       | IsInt e -> (
           match fe e with
           | UnOp (UnOp.IntToNum, e) -> (
-              let t, _, _ = Typing.type_lexpr gamma e in
+              let t, _ = Typing.type_lexpr gamma e in
               match t with
               | Some IntType -> True
               | Some _ -> False
@@ -2827,29 +2988,43 @@ let rec reduce_formula_loop
           in
           List.map (fun x -> Formula.Infix.(x #== k)) l
           |> List.fold_left Formula.Infix.( #&& ) Formula.True
-      | ForAll (bt, a) ->
-          (* Think about quantifier instantiation *)
-          (* Collect binders that are in gamma *)
-          let binders_in_gamma =
-            List.map (fun (b, _) -> (b, Type_env.get gamma b)) bt
+      | ForAll (bt, a) -> (
+          (* We create a new pfs and gamma where:
+             - All shadowed variables are substituted with a fresh variable
+             - The gamma has been updated with the types given in the binder *)
+          let new_gamma = Type_env.copy gamma in
+          let new_pfs = PFS.copy pfs in
+          let subst_bindings = List.map (fun (x, _) -> (x, LVar.alloc ())) bt in
+          let subst =
+            SVal.SESubst.init
+              (List.map
+                 (fun (x, y) -> (Expr.LVar x, Expr.LVar y))
+                 subst_bindings)
           in
-          let ra = f a in
-          let vars = Formula.lvars a in
+          let () =
+            List.iter
+              (fun (x, t) ->
+                let () =
+                  match Type_env.get new_gamma x with
+                  | Some t ->
+                      let new_var = List.assoc x subst_bindings in
+                      Type_env.update new_gamma new_var t
+                  | None -> ()
+                in
+                match t with
+                | Some t -> Type_env.update new_gamma x t
+                | None -> Type_env.remove new_gamma x)
+              bt
+          in
+          let () = PFS.substitution subst new_pfs in
+          (* We reduce using our new pfs and gamma *)
+          let ra = reduce_formula_loop ~rpfs matching new_pfs new_gamma a in
+          let vars = Formula.lvars ra in
           let bt = List.filter (fun (b, _) -> Containers.SS.mem b vars) bt in
-          let result =
-            match bt with
-            | [] -> ra
-            | _ -> ForAll (bt, ra)
-          in
-
-          (* Reinstate binders *)
-          List.iter
-            (fun (b, t) ->
-              match t with
-              | None -> Type_env.remove gamma b
-              | Some t -> Type_env.update gamma b t)
-            binders_in_gamma;
-          result
+          (* We remove all quantifiers that aren't used anymore *)
+          match bt with
+          | [] -> ra
+          | _ -> ForAll (bt, ra))
       | _ -> a
     in
 
@@ -2924,7 +3099,7 @@ let relate_llen
 
   (* Auxiliary function *)
   let relate_llen_aux (e : Expr.t) (llen : Cint.t) (lcat : Expr.t list) =
-    L.verbose (fun fmt ->
+    L.tmi (fun fmt ->
         fmt "Relate llen aux: %a: %a, %a" Expr.pp e Expr.pp (Cint.to_expr llen)
           Fmt.(brackets (list ~sep:semi Expr.pp))
           lcat);
@@ -2952,7 +3127,7 @@ let relate_llen
       (relate_llen_loop llen [] lcat)
   in
 
-  L.verbose (fun fmt ->
+  L.tmi (fun fmt ->
       fmt "Relate llen: %a, %a" Expr.pp e
         Fmt.(brackets (list ~sep:semi Expr.pp))
         lcat);
@@ -2968,7 +3143,7 @@ let understand_lstcat
     (gamma : Type_env.t)
     (lcat : Expr.t list)
     (rcat : Expr.t list) : (Formula.t * Containers.SS.t) option =
-  L.verbose (fun fmt ->
+  L.tmi (fun fmt ->
       fmt "Understanding LstCat: %a, %a"
         Fmt.(brackets (list ~sep:semi Expr.pp))
         lcat

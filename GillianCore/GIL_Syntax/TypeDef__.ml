@@ -63,6 +63,7 @@ and binop =
   | SLessThan
   | BAnd
   | BOr
+  | BImpl
   | BitwiseAnd
   | BitwiseOr
   | BitwiseXor
@@ -140,6 +141,8 @@ and expr =
   | NOp of nop * expr list
   | EList of expr list
   | ESet of expr list
+  | Exists of (string * typ option) list * expr
+  | EForall of (string * typ option) list * expr
 
 and formula =
   | True
@@ -179,6 +182,8 @@ and slcmd =
   | ApplyLem of string * expr list * string list
   | SepAssert of assertion * string list
   | Invariant of assertion * string list
+  | Consume of assertion * string list
+  | Produce of assertion
   | SymbExec
 
 and lcmd =
