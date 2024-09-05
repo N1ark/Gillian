@@ -231,7 +231,7 @@ module Make (SMemory : SMemory.S) :
     let open Syntaxes.List in
     let { heap; store; pfs; gamma; spec_vars } = state in
     (* matching false is suspicious here *)
-    let pc = Gpc.make ~matching:false ~pfs ~gamma () in
+    let pc = Gpc.make ~matching:true ~pfs ~gamma () in
     let+ Gbranch.{ value = new_heap; pc } =
       SMemory.produce core_pred heap pc args
     in
