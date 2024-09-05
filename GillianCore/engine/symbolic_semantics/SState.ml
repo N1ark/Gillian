@@ -438,7 +438,7 @@ module Make (SMemory : SMemory.S) :
 
       let states =
         match memories with
-        | [] -> failwith "Impossible: memory substitution returned []"
+        | [] -> []
         | [ (mem, lpfs, lgamma) ] ->
             let () = Formula.Set.iter (PFS.extend pfs) lpfs in
             let () =
@@ -446,9 +446,15 @@ module Make (SMemory : SMemory.S) :
             in
             if not kill_new_lvars then
               Typing.naively_infer_type_information pfs gamma;
-            [ { heap = mem; store; pfs; gamma; spec_vars } ]
+            if PFS.mem pfs False then (
+              L.verbose (fun m ->
+                  m "Substitution returned one False state, vanishing");
+              [])
+            else [ { heap = mem; store; pfs; gamma; spec_vars } ]
         | multi_mems ->
-            List.map
+            L.verbose (fun m ->
+                m "Substitution returned %d states" (List.length multi_mems));
+            List.filter_map
               (fun (mem, lpfs, lgamma) ->
                 let bpfs = PFS.copy pfs in
                 let bgamma = Type_env.copy gamma in
@@ -458,13 +464,21 @@ module Make (SMemory : SMemory.S) :
                 in
                 if not kill_new_lvars then
                   Typing.naively_infer_type_information bpfs bgamma;
-                {
-                  heap = mem;
-                  store = SStore.copy store;
-                  pfs = bpfs;
-                  gamma = bgamma;
-                  spec_vars;
-                })
+                if PFS.mem bpfs False then (
+                  L.verbose (fun m ->
+                      m
+                        "Substitution returned an impossible state, vanishing \
+                         it");
+                  None)
+                else
+                  Some
+                    {
+                      heap = mem;
+                      store = SStore.copy store;
+                      pfs = bpfs;
+                      gamma = bgamma;
+                      spec_vars;
+                    })
               multi_mems
       in
 

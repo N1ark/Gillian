@@ -367,7 +367,9 @@ module Make (State : SState.S) :
     Preds.substitution_in_place subst preds;
     Wands.substitution_in_place subst wands;
     match states with
-    | [] -> failwith "Impossible: state substitution returned []"
+    | [] ->
+        L.normal (fun f -> f "WARNING: substitution vanished");
+        (subst, [])
     | [ state ] -> (subst, [ { astate with state } ])
     | states ->
         ( subst,
@@ -754,7 +756,9 @@ module Make (State : SState.S) :
     in
     L.verbose (fun fmt -> fmt "Concluded final check");
     match admissible with
-    | None -> other_state_err "final state non admissible"
+    | None ->
+        L.normal (fun f -> f "WARNING: vanished when producing assertion");
+        Res_list.vanish
     | Some state -> Res_list.return { state; preds; pred_defs; wands; variants }
 
   let produce (astate : t) (subst : SVal.SESubst.t) (a : Asrt.t) :

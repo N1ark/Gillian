@@ -963,7 +963,6 @@ and reduce_lexpr_loop
               (List.hd eqs) (List.tl eqs)
           in
           f conj
-    | BinOp (ALoc x, Equal, ALoc y) when not matching -> Lit (Bool (x = y))
     | LVar x when reduce_lvars -> (
         let equals = get_equal_expressions pfs (LVar x) in
         let lit_equals =
@@ -2159,7 +2158,7 @@ and simplify_int_arithmetic_lexpr
   | _ -> le
 
 (** Checks if an int expression is greater than zero.
-      
+
     @returns [Some true] if definitely > 0, [Some false] if definitely < 0,
       and [None] if both outcomes are satisfiable. *)
 and check_ge_zero_int ?(top_level = false) (pfs : PFS.t) (e : Expr.t) :
@@ -2679,8 +2678,6 @@ let rec reduce_formula_loop
                             (BinOp (UnOp (LstLen, y), IMinus, UnOp (LstLen, z)))
                 -> True
               (* USUAL REDUCTIONS *)
-              | ALoc _, Lit (Loc _) | Lit (Loc _), ALoc _ -> False
-              | ALoc x, ALoc y when (not matching) && x <> y -> False
               | EList [], x
               | x, EList []
               | Lit (LList []), x

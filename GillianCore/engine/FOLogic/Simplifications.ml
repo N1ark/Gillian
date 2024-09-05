@@ -546,7 +546,7 @@ let simplify_pfs_and_gamma
                     (* SESubst.put result aloc (Lit (Loc lloc));
                        let temp_subst = SESubst.init [ aloc, Lit (Loc lloc) ] in
                          PFS.substitution_in_place temp_subst lpfs *)
-                | ALoc alocl, ALoc alocr when matching ->
+                | ALoc alocl, ALoc alocr ->
                     L.verbose (fun fmt ->
                         fmt "Two equal alocs: %s and %s" alocl alocr);
                     SESubst.put result (ALoc alocr) (ALoc alocl);
@@ -558,11 +558,6 @@ let simplify_pfs_and_gamma
                       SESubst.substitute_formula ~partial:true temp_subst whole
                     in
                     rec_call substituted
-                | ALoc alocl, ALoc alocr when not matching ->
-                    if alocl = alocr then `Filter
-                    else
-                      stop_explain
-                        "Two different abstract locations are never equal"
                 (* Equal variables - what happens if they are numbers? *)
                 | LVar v1, LVar v2 when v1 = v2 -> `Filter
                 (* Variable and something else *)
