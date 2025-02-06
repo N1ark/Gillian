@@ -857,12 +857,7 @@ let rec reduce_binop_inttonum_const
       Expr.BinOp (l, op, r)
   | _ -> None
 
-(**
-  Reduction of logical expressions
-  - gamma is used for:
-  - pfs  are used for: Car, Cdr, SetDiff
-*)
-(* TODO: can this whole mess be removed since we did sth similar with formulae? *)
+(** Reduction of logical expressions *)
 and reduce_lexpr_loop
     ?(matching = false)
     ?(reduce_lvars = false)
@@ -1528,8 +1523,6 @@ and reduce_lexpr_loop
     | BinOp (UnOp (ToStringOp, e1), Equal, UnOp (ToStringOp, e2)) ->
         BinOp (e1, Equal, e2)
     (* BinOps: Equalities (locations) *)
-    (* This line is the central mechanism to "matching": *)
-    | BinOp (ALoc x, Equal, ALoc y) when not matching -> Lit (Bool (x = y))
     | BinOp (ALoc _, Equal, Lit (Loc _)) | BinOp (Lit (Loc _), Equal, ALoc _) ->
         Expr.false_
     (* BinOps: Equalities (lists) *)
